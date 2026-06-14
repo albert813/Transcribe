@@ -2,8 +2,8 @@
    Voice Message Transcript Bot
    ------------------------------------------------------------
    Watches for Discord voice messages, transcribes them via
-   Groq's free Whisper API, and posts the transcript in a
-   thread on the original message.
+   Groq's free Whisper API, and posts the transcript as a
+   direct reply to the original message.
 
    Required environment variables:
      DISCORD_TOKEN  - your bot's token from the Discord
@@ -110,31 +110,19 @@ function formatTranscript(transcript) {
 }
 
 /**
- * Posts the transcript in a thread on the original message.
- * Falls back to a direct reply if a thread can't be created
- * (e.g. in DMs, or if the bot lacks thread permissions).
+ * Posts the transcript as a direct reply to the voice message.
  */
 async function postReply(message, content) {
-  let target;
-
-  try {
-    target = await message.startThread({
-      name: "Transcript",
-      autoArchiveDuration: 1440, // 24 hours
-    });
-  } catch (err) {
-    console.warn("Couldn't create thread, falling back to direct reply:", err.message);
-    target = message;
-  }
-
-  await sendChunked(target, content);
+  await sendChunked(message, content);
 }
 
 /**
- * Sends content to a channel/thread/message, splitting it into
- * multiple messages if it exceeds Discord's character limit.
+ * Sends content as a reply, splitting into multiple messages if it
+ * exceeds Discord's character limit. Only the first chunk is sent
+ * as a reply (with the reference back to the original message);
+ * any additional chunks are sent as plain follow-ups in the channel.
  */
-async function sendChunked(target, content) {
+async function sendChunked(message, content) {
   let remaining = content;
   let first = true;
 
@@ -142,11 +130,10 @@ async function sendChunked(target, content) {
     const chunk = remaining.slice(0, MAX_DISCORD_MESSAGE);
     remaining = remaining.slice(MAX_DISCORD_MESSAGE);
 
-    if (first && typeof target.reply === "function" && target.startThread === undefined) {
-      // target is a Message (fallback case) - use reply for the first chunk
-      await target.reply(chunk);
+    if (first) {
+      await message.reply(chunk);
     } else {
-      await target.send(chunk);
+      await message.channel.send(chunk);
     }
     first = false;
   }
